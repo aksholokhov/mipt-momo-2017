@@ -151,28 +151,11 @@ def create_log_reg_oracle(A, b, regcoef, oracle_type='usual'):
 
 
 def grad_finite_diff(func, x, eps=1e-8):
-    """
-    Returns approximation of the gradient using finite differences:
-        result_i := (f(x + eps * e_i) - f(x)) / eps,
-        where e_i are coordinate vectors:
-        e_i = (0, 0, ..., 0, 1, 0, ..., 0)
-                          >> i <<
-    """
-    # TODO: Implement numerical estimation of the gradient
-
-
-    return None
+    return np.array([(func(x + eps * e) - func(x)) / eps for e in np.eye(x.shape[0])])
 
 def hess_finite_diff(func, x, eps=1e-5):
-    """
-    Returns approximation of the Hessian using finite differences:
-        result_{ij} := (f(x + eps * e_i + eps * e_j)
-                               - f(x + eps * e_i) 
-                               - f(x + eps * e_j)
-                               + f(x)) / eps^2,
-        where e_i are coordinate vectors:
-        e_i = (0, 0, ..., 0, 1, 0, ..., 0)
-                          >> i <<
-    """
-    # TODO: Implement numerical estimation of the Hessian
-    return None
+    return np.array([[(func(x + eps * e_i + eps * e_j)
+                               - func(x + eps * e_i)
+                               - func(x + eps * e_j)
+                               + func(x)) / eps**2
+                      for e_j in np.eye(x.shape[0])] for e_i in np.eye(x.shape[0])])
