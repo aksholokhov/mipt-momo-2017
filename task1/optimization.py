@@ -84,7 +84,7 @@ class LineSearchTool(object):
         derphi = lambda a: oracle.grad_directional(x_k, d_k, a)
 
         if self._method == "Wolfe":
-            alpha = scalar_search_wolfe2(phi, derphi, c1 = self.c1, c2 = self.c2)
+            alpha = scalar_search_wolfe2(phi, derphi, c1 = self.c1, c2 = self.c2)[0]
             if alpha == None:
                 alpha = self.armijo_linesearch(phi, derphi, previous_alpha)
 
@@ -96,7 +96,7 @@ class LineSearchTool(object):
         return alpha
 
 
-    def armijo_linesearch(self, phi, derphi, previous_alpha):
+    def armijo_linesearch(self, phi, derphi, previous_alpha = None):
         if previous_alpha is not None:
             alpha = previous_alpha
         else:
@@ -104,9 +104,6 @@ class LineSearchTool(object):
 
         while phi(alpha) > phi(0) + self.c1*alpha*derphi(0):
             alpha /= 2
-            # TODO: check whether this condition fails tests
-            if alpha <= 1e-14:
-                alpha = None
 
         return alpha
 
@@ -169,21 +166,20 @@ def gradient_descent(oracle, x_0, tolerance=1e-5, max_iter=10000,
     >> print('Found optimal point: {}'.format(x_opt))
        Found optimal point: [ 0.  1.  2.  3.  4.]
     """
-    history = defaultdict(list) if trace else None
     line_search_tool = get_line_search_tool(line_search_options)
     x_k = np.copy(x_0)
+
     if trace:
         history = {'time': [], 'func' : [], 'grad_norm' : []}
         if len(x_0) <= 2:
-            history['x'] = [x_k]
+            history['x'] = []
     else:
         history = None
 
-    # TODO: Implement gradient descent
-    # Use line_search_tool.line_search() for adaptive step size.
+    if display:
+        print("Debug info")
 
     g_0 = oracle.grad(x_0)
-    lst = LineSearchTool()
 
     start = time()
     for k in range(max_iter):
@@ -198,11 +194,11 @@ def gradient_descent(oracle, x_0, tolerance=1e-5, max_iter=10000,
                 history['grad_norm'].append(np.linalg.norm(g_k))
                 if len(x_0) <= 2:
                     history['x'].append(np.copy(x_k))
-            break
+            return x_k, 'success', history
 
         d_k = -g_k
 
-        a_k = lst.line_search(oracle, x_k, d_k)
+        a_k = line_search_tool.line_search(oracle, x_k, d_k)
 
         if trace:
             current_time = time()
@@ -215,7 +211,7 @@ def gradient_descent(oracle, x_0, tolerance=1e-5, max_iter=10000,
         x_k = x_k + a_k*d_k
 
 
-    return x_k, 'success', history
+    return x_k, 'iterations_exceeded', history
 
 
 def newton(oracle, x_0, tolerance=1e-5, max_iter=100,
@@ -268,10 +264,57 @@ def newton(oracle, x_0, tolerance=1e-5, max_iter=100,
     >> print('Found optimal point: {}'.format(x_opt))
        Found optimal point: [ 0.  1.  2.  3.  4.]
     """
-    history = defaultdict(list) if trace else None
-    line_search_tool = get_line_search_tool(line_search_options)
-    x_k = np.copy(x_0)
 
     # TODO: Implement Newton's method.
     # Use line_search_tool.line_search() for adaptive step size.
+
+    line_search_tool = get_line_search_tool(line_search_options)
+    x_k = np.copy(x_0)
+
+    if trace:
+        history = {'time': [], 'func': [], 'grad_norm': []}
+        if len(x_0) <= 2:
+            history['x'] = []
+    else:
+        history = None
+
+    if display:
+        print("Debug info")
+
+    # TODO: Implement gradient descent
+    # Use line_search_tool.line_search() for adaptive step size.
+
+    g_0 = oracle.grad(x_0)
+
+    start = time()
+    for k in range(max_iter):
+        f_k = oracle.func(x_k)
+        g_k = oracle.grad(x_k)
+
+        if np.linalg.norm(g_k) ** 2 < tolerance * np.linalg.norm(g_0) ** 2:
+            if trace:
+                current_time = time()
+                history['time'].append(current_time - start)
+                history['func'].append(f_k)
+                history['grad_norm'].append(np.linalg.norm(g_k))
+                if len(x_0) <= 2:
+                    history['x'].append(np.copy(x_k))
+            return x_k, 'success', history
+
+        d_k = -g_k
+
+        a_k = line_search_tool.line_search(oracle, x_k, d_k)
+
+        if trace:
+            current_time = time()
+            history['time'].append(current_time - start)
+            history['func'].append(f_k)
+            history['grad_norm'].append(np.linalg.norm(g_k))
+            if len(x_0) <= 2:
+                history['x'].append(np.copy(x_k))
+
+        x_k = x_k + a_k * d_k
+
+    return x_k, 'iterations_exceeded', history
+
     return x_k, 'success', history
