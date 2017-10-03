@@ -1,10 +1,6 @@
 import numpy as np
-from numpy.linalg import LinAlgError
-import scipy
-from datetime import datetime
 from time import time
-from collections import defaultdict
-
+from scipy.linalg import cholesky, cho_solve
 
 class LineSearchTool(object):
     """
@@ -182,11 +178,11 @@ def gradient_descent(oracle, x_0, tolerance=1e-5, max_iter=10000,
     g_0 = oracle.grad(x_0)
 
     start = time()
-    for k in range(max_iter):
+    for k in range(max_iter + 1):
         f_k = oracle.func(x_k)
         g_k = oracle.grad(x_k)
 
-        if np.linalg.norm(g_k)**2 < tolerance*np.linalg.norm(g_0)**2:
+        if np.linalg.norm(g_k)**2 <= tolerance*np.linalg.norm(g_0)**2:
             if trace:
                 current_time = time()
                 history['time'].append(current_time - start)
@@ -281,17 +277,19 @@ def newton(oracle, x_0, tolerance=1e-5, max_iter=100,
     if display:
         print("Debug info")
 
-    # TODO: Implement gradient descent
-    # Use line_search_tool.line_search() for adaptive step size.
-
     g_0 = oracle.grad(x_0)
 
     start = time()
-    for k in range(max_iter):
+    for k in range(max_iter + 1):
         f_k = oracle.func(x_k)
         g_k = oracle.grad(x_k)
+        h_k = oracle.hess(x_k)
 
-        if np.linalg.norm(g_k) ** 2 < tolerance * np.linalg.norm(g_0) ** 2:
+        if np.isnan(f_k).any() or np.isnan(g_k).any() or np.isnan(h_k).any()\
+                or np.isinf(f_k).any() or np.isinf(g_k).any() or np.isinf(h_k).any():
+            return x_k, "computational_error", history
+
+        if np.linalg.norm(g_k) ** 2 <= tolerance * np.linalg.norm(g_0) ** 2:
             if trace:
                 current_time = time()
                 history['time'].append(current_time - start)
@@ -301,7 +299,14 @@ def newton(oracle, x_0, tolerance=1e-5, max_iter=100,
                     history['x'].append(np.copy(x_k))
             return x_k, 'success', history
 
-        d_k = -g_k
+        try:
+            U = cholesky(h_k, check_finite=True)
+            d_k = cho_solve((U, False), -g_k, check_finite=True)
+        except np.linalg.LinAlgError as e:
+            if "not positive" in str(e):
+                return x_k, "newton_direction_error", history
+            else:
+                return x_k, "computational_error", history
 
         a_k = line_search_tool.line_search(oracle, x_k, d_k)
 
@@ -316,5 +321,3 @@ def newton(oracle, x_0, tolerance=1e-5, max_iter=100,
         x_k = x_k + a_k * d_k
 
     return x_k, 'iterations_exceeded', history
-
-    return x_k, 'success', history
