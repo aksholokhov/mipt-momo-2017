@@ -2,6 +2,7 @@ import numpy as np
 from numpy.linalg import LinAlgError
 import scipy
 from datetime import datetime
+from time import time
 from collections import defaultdict
 
 
@@ -76,8 +77,38 @@ class LineSearchTool(object):
             Chosen step size
         """
         # TODO: Implement line search procedures for Armijo, Wolfe and Constant steps.
-        return None
 
+        from scipy.optimize.linesearch import scalar_search_wolfe2
+
+        phi = lambda a: oracle.func_directional(x_k, d_k, a)
+        derphi = lambda a: oracle.grad_directional(x_k, d_k, a)
+
+        if self._method == "Wolfe":
+            alpha = scalar_search_wolfe2(phi, derphi, c1 = self.c1, c2 = self.c2)
+            if alpha == None:
+                alpha = self.armijo_linesearch(phi, derphi, previous_alpha)
+
+        elif self._method == "Armijo":
+            alpha = self.armijo_linesearch(phi, derphi, previous_alpha)
+        else:
+            alpha = self.c
+
+        return alpha
+
+
+    def armijo_linesearch(self, phi, derphi, previous_alpha):
+        if previous_alpha is not None:
+            alpha = previous_alpha
+        else:
+            alpha = self.alpha_0
+
+        while phi(alpha) > phi(0) + self.c1*alpha*derphi(0):
+            alpha /= 2
+            # TODO: check whether this condition fails tests
+            if alpha <= 1e-14:
+                alpha = None
+
+        return alpha
 
 def get_line_search_tool(line_search_options=None):
     if line_search_options:
@@ -141,9 +172,49 @@ def gradient_descent(oracle, x_0, tolerance=1e-5, max_iter=10000,
     history = defaultdict(list) if trace else None
     line_search_tool = get_line_search_tool(line_search_options)
     x_k = np.copy(x_0)
+    if trace:
+        history = {'time': [], 'func' : [], 'grad_norm' : []}
+        if len(x_0) <= 2:
+            history['x'] = [x_k]
+    else:
+        history = None
 
     # TODO: Implement gradient descent
     # Use line_search_tool.line_search() for adaptive step size.
+
+    g_0 = oracle.grad(x_0)
+    lst = LineSearchTool()
+
+    start = time()
+    for k in range(max_iter):
+        f_k = oracle.func(x_k)
+        g_k = oracle.grad(x_k)
+
+        if np.linalg.norm(g_k)**2 < tolerance*np.linalg.norm(g_0)**2:
+            if trace:
+                current_time = time()
+                history['time'].append(current_time - start)
+                history['func'].append(f_k)
+                history['grad_norm'].append(np.linalg.norm(g_k))
+                if len(x_0) <= 2:
+                    history['x'].append(np.copy(x_k))
+            break
+
+        d_k = -g_k
+
+        a_k = lst.line_search(oracle, x_k, d_k)
+
+        if trace:
+            current_time = time()
+            history['time'].append(current_time - start)
+            history['func'].append(f_k)
+            history['grad_norm'].append(np.linalg.norm(g_k))
+            if len(x_0) <= 2:
+                history['x'].append(np.copy(x_k))
+
+        x_k = x_k + a_k*d_k
+
+
     return x_k, 'success', history
 
 
