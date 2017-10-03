@@ -9,9 +9,10 @@ import scipy.optimize
 import sys
 import warnings
 
-import optimization
-import oracles
-
+# import task1.optimization as optimization
+# import task1.oracles as oracles
+import oracles as oracles                 # TODO: uncomment it before submitting
+import optimization as optimization
 
 def test_python3():
     ok_(sys.version_info > (3, 0))
