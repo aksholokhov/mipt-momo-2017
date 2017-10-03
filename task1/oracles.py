@@ -1,5 +1,6 @@
 import numpy as np
-import scipy
+import scipy as sp
+from scipy import sparse
 from scipy.special import expit
 
 
@@ -45,7 +46,7 @@ class QuadraticOracle(BaseSmoothOracle):
     """
 
     def __init__(self, A, b):
-        if not scipy.sparse.isspmatrix_dia(A) and not np.allclose(A, A.T):
+        if not sparse.isspmatrix_dia(A) and not np.allclose(A, A.T):
             raise ValueError('A should be a symmetric matrix.')
         self.A = A
         self.b = b
@@ -82,20 +83,33 @@ class LogRegL2Oracle(BaseSmoothOracle):
         self.matvec_Ax = matvec_Ax
         self.matvec_ATx = matvec_ATx
         self.matmat_ATsA = matmat_ATsA
+        self.matvec_b_adam_A = lambda x: sparse.diags(b, 0).dot(x) # thanx to Anton Zakharenkov for an idea of a fast implementation of Adamar's multiplication
         self.b = b
         self.regcoef = regcoef
 
     def func(self, x):
-        # TODO: Implement
-        return None
+        return np.mean(
+                np.vectorize(lambda x: np.logaddexp(0, x))(self.matvec_b_adam_A(self.matvec_Ax(x)) * (-1))
+            ) + self.regcoef / 2 * np.dot(x, x)
 
     def grad(self, x):
-        # TODO: Implement
-        return None
+        m = self.b.shape[0]
+
+        return - (1 / m) * self.matvec_ATx(
+                            self.matvec_b_adam_A(
+                                np.vectorize(expit)(-1*self.matvec_b_adam_A(self.matvec_Ax(x))
+                                )
+                            )
+                        )  + self.regcoef * x
 
     def hess(self, x):
-        # TODO: Implement
-        return None
+        m = self.b.shape[0]
+
+        return (1 / m) * self.matmat_ATsA(
+                    np.vectorize(lambda x: expit(x) * (1 - expit(x)))(
+                        -1 * self.matvec_b_adam_A(self.matvec_Ax(x))
+                    )
+                )  + self.regcoef * np.eye(len(x))
 
 
 class LogRegL2OptimizedOracle(LogRegL2Oracle):
@@ -122,12 +136,9 @@ def create_log_reg_oracle(A, b, regcoef, oracle_type='usual'):
     Auxiliary function for creating logistic regression oracles.
         `oracle_type` must be either 'usual' or 'optimized'
     """
-    matvec_Ax = lambda x: x  # TODO: Implement
-    matvec_ATx = lambda x: x  # TODO: Implement
-
-    def matmat_ATsA(s):
-        # TODO: Implement
-        return None
+    matvec_Ax = lambda x: A.dot(x)
+    matvec_ATx = lambda x: A.T.dot(x)
+    matmat_ATsA = lambda x: A.T.dot(sp.sparse.diags(x).dot(A))
 
     if oracle_type == 'usual':
         oracle = LogRegL2Oracle
@@ -148,8 +159,9 @@ def grad_finite_diff(func, x, eps=1e-8):
                           >> i <<
     """
     # TODO: Implement numerical estimation of the gradient
-    return None
 
+
+    return None
 
 def hess_finite_diff(func, x, eps=1e-5):
     """
