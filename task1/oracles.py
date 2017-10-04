@@ -83,33 +83,22 @@ class LogRegL2Oracle(BaseSmoothOracle):
         self.matvec_Ax = matvec_Ax
         self.matvec_ATx = matvec_ATx
         self.matmat_ATsA = matmat_ATsA
-        self.matvec_b_adam_A = lambda x: sparse.diags(b, 0).dot(x) # thanx to Anton Zakharenkov for an idea of a fast implementation of Adamar's multiplication
         self.b = b
         self.regcoef = regcoef
 
     def func(self, x):
-        return np.mean(
-                np.vectorize(lambda x: np.logaddexp(0, x))(self.matvec_b_adam_A(self.matvec_Ax(x)) * (-1))
-            ) + self.regcoef / 2 * np.dot(x, x)
+        m = self.b.shape[0]
+        return (1 / m ) * np.logaddexp(0, -self.b * self.matvec_Ax(x)).sum() + 1/2*self.regcoef * x.T.dot(x)
 
     def grad(self, x):
         m = self.b.shape[0]
-
-        return - (1 / m) * self.matvec_ATx(
-                            self.matvec_b_adam_A(
-                                np.vectorize(expit)(-1*self.matvec_b_adam_A(self.matvec_Ax(x))
-                                )
-                            )
-                        )  + self.regcoef * x
+        return (-1 / m) * self.matvec_ATx(self.b * expit(-self.b * self.matvec_Ax(x))) + self.regcoef * x
 
     def hess(self, x):
         m = self.b.shape[0]
+        Ax = self.matvec_Ax(x)
+        return (1 / m) * self.matmat_ATsA(self.b * self.b * expit(self.b * Ax) * expit(-self.b * Ax)) + self.regcoef * np.eye(len(x))
 
-        return (1 / m) * self.matmat_ATsA(
-                    np.vectorize(lambda x: expit(x) * (1 - expit(x)))(
-                        -1 * self.matvec_b_adam_A(self.matvec_Ax(x))
-                    )
-                )  + self.regcoef * np.eye(len(x))
 
 
 class LogRegL2OptimizedOracle(LogRegL2Oracle):
@@ -138,7 +127,12 @@ def create_log_reg_oracle(A, b, regcoef, oracle_type='usual'):
     """
     matvec_Ax = lambda x: A.dot(x)
     matvec_ATx = lambda x: A.T.dot(x)
-    matmat_ATsA = lambda x: A.T.dot(sp.sparse.diags(x).dot(A))
+
+    def matmat_ATsA(s):
+        if sparse.isspmatrix(A):
+            return A.T.dot(sparse.diags(s).dot(A))
+        else:
+            return A.T.dot(np.diag(s).dot(A))
 
     if oracle_type == 'usual':
         oracle = LogRegL2Oracle
