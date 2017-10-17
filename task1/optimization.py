@@ -168,7 +168,7 @@ def gradient_descent(oracle, x_0, tolerance=1e-5, max_iter=10000,
     if trace:
         history = {'time': [], 'func' : [], 'grad_norm' : []}
         if len(x_0) <= 2:
-            history['x'] = []
+            history['x'] = []       # TODO: Remove it before submision
     else:
         history = None
 
@@ -287,7 +287,7 @@ def newton(oracle, x_0, tolerance=1e-5, max_iter=100,
 
         if np.isnan(f_k).any() or np.isnan(g_k).any() or np.isnan(h_k).any()\
                 or np.isinf(f_k).any() or np.isinf(g_k).any() or np.isinf(h_k).any():
-            return x_k, "computational_error", history
+           return x_k, "computational_error", history
 
         if np.linalg.norm(g_k) ** 2 <= tolerance * np.linalg.norm(g_0) ** 2:
             if trace:
@@ -307,6 +307,7 @@ def newton(oracle, x_0, tolerance=1e-5, max_iter=100,
                 return x_k, "newton_direction_error", history
             else:
                 return x_k, "computational_error", history
+
 
         a_k = line_search_tool.line_search(oracle, x_k, d_k)
 
