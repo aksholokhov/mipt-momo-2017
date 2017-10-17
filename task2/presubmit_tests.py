@@ -1,13 +1,14 @@
 import sys
-from io import StringIO
 import unittest
+from io import StringIO
+
 import numpy as np
 from numpy.linalg import norm
 from numpy.testing import assert_equal, assert_array_almost_equal, assert_allclose
 
-from oracles import QuadraticOracle, create_log_reg_oracle, hess_vec_finite_diff
-from optimization import conjugate_gradients, lbfgs, hessian_free_newton
-from utils import LineSearchTool
+from task2.optimization import conjugate_gradients, lbfgs, hessian_free_newton
+from task2.oracles import QuadraticOracle, hess_vec_finite_diff
+from utils.utils import LineSearchTool
 
 # Check if it's Python 3
 if not sys.version_info > (3, 0):

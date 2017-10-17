@@ -1,6 +1,9 @@
+from collections import defaultdict  # Use this for effective implementation of L-BFGS
+from time import time
+
 import numpy as np
-from collections import defaultdict, deque  # Use this for effective implementation of L-BFGS
-from task2.utils import get_line_search_tool
+
+from utils.utils import get_line_search_tool
 
 
 def conjugate_gradients(matvec, b, x_0, tolerance=1e-4, max_iter=None, trace=False, display=False):
@@ -44,11 +47,53 @@ def conjugate_gradients(matvec, b, x_0, tolerance=1e-4, max_iter=None, trace=Fal
             - history['residual_norm'] : list of values Euclidian norms ||g(x_k)|| of the gradient on every step of the algorithm
             - history['x'] : list of np.arrays, containing the trajectory of the algorithm. ONLY STORE IF x.size <= 2
     """
-    history = defaultdict(list) if trace else None
-    x_k = np.copy(x_0)
-    # TODO: Implement Conjugate Gradients method.
-    return x_k, 'success', history
+    x_k = np.copy(x_0).astype("float64")
+    if max_iter is None:
+        max_iter = x_k.shape[0]
 
+    if trace:
+        history = {'time': [], 'residual_norm' : []}
+        if len(x_0) <= 2:
+            history['x'] = []
+    else:
+        history = None
+
+    if display:
+        print("Debug info")
+
+    g_k = matvec(x_0) - b
+    d_k = -g_k
+
+    start = time()
+    for k in range(max_iter + 1):
+
+        if trace:
+            current_time = time()
+            history['time'].append(current_time - start)
+            history['residual_norm'].append(np.linalg.norm(g_k))
+            if len(x_0) <= 2:
+                history['x'].append(np.copy(x_k))
+
+        if np.linalg.norm(g_k) <= tolerance*np.linalg.norm(b):
+            return x_k, 'success', history
+
+        Adk = matvec(d_k)
+        a = g_k.dot(g_k)/Adk.dot(d_k)
+
+        x_k += a*d_k
+        g_k_plus_1 = g_k + a*Adk
+
+        d_k = -g_k_plus_1 + g_k_plus_1.dot(g_k_plus_1)/g_k.dot(g_k)*d_k
+        g_k = g_k_plus_1
+
+    if trace:
+        current_time = time()
+        history['time'].append(current_time - start)
+        history['residual_norm'].append(np.linalg.norm(g_k))
+        if len(x_0) <= 2:
+            history['x'].append(np.copy(x_k))
+
+    return x_k, 'iterations_exceeded', history
 
 def lbfgs(oracle, x_0, tolerance=1e-4, max_iter=500, memory_size=10,
           line_search_options=None, display=False, trace=False):
@@ -143,10 +188,61 @@ def hessian_free_newton(oracle, x_0, tolerance=1e-4, max_iter=500,
             - history['grad_norm'] : list of values Euclidian norms ||g(x_k)|| of the gradient on every step of the algorithm
             - history['x'] : list of np.arrays, containing the trajectory of the algorithm. ONLY STORE IF x.size <= 2
     """
-    history = defaultdict(list) if trace else None
     line_search_tool = get_line_search_tool(line_search_options)
     x_k = np.copy(x_0)
 
-    # TODO: Implement hessian-free Newton's method.
-    # Use line_search_tool.line_search() for adaptive step size.
-    return x_k, 'success', history
+    if trace:
+        history = {'time': [], 'func': [], 'grad_norm': []}
+        if len(x_0) <= 2:
+            history['x'] = []
+    else:
+        history = None
+
+    if display:
+        print("Debug info")
+
+    g_0 = oracle.grad(x_0)
+
+    start = time()
+    for k in range(max_iter + 1):
+        f_k = oracle.func(x_k)
+        g_k = oracle.grad(x_k)
+
+        if np.isnan(f_k).any() or np.isnan(g_k).any() or np.isinf(f_k).any() or np.isinf(g_k).any():
+            return x_k, "computational_error", history
+
+        if np.linalg.norm(g_k)**2 <= tolerance * np.linalg.norm(g_0)**2:       # TODO: may be wrong
+            if trace:
+                current_time = time()
+                history['time'].append(current_time - start)
+                history['func'].append(f_k)
+                history['grad_norm'].append(np.linalg.norm(g_k))
+                if len(x_0) <= 2:
+                    history['x'].append(np.copy(x_k))
+            return x_k, 'success', history
+
+        solution_found = False
+
+        while not solution_found:
+            n_k = min(0.5, np.sqrt(np.linalg.norm(g_k)))
+            d_k, message, _ = conjugate_gradients(lambda v: oracle.hess_vec(x_k, v), -g_k, -g_k,
+                                                  tolerance = n_k)
+            if message != "success" or g_k.dot(d_k) >= 0:
+                n_k /= 10
+                continue
+
+            solution_found = True
+
+        a_k = line_search_tool.line_search(oracle, x_k, d_k)
+
+        if trace:
+            current_time = time()
+            history['time'].append(current_time - start)
+            history['func'].append(f_k)
+            history['grad_norm'].append(np.linalg.norm(g_k))
+            if len(x_0) <= 2:
+                history['x'].append(np.copy(x_k))
+
+        x_k = x_k + a_k * d_k
+
+    return x_k, 'iterations_exceeded', history

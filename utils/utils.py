@@ -1,5 +1,6 @@
 import numpy as np
 
+
 class LineSearchTool(object):
     """
     Line search tool for adaptively tuning the step size of the algorithm.
@@ -10,7 +11,6 @@ class LineSearchTool(object):
             - 'Wolfe' -- enforce strong Wolfe conditions;
             - 'Armijo" -- adaptive Armijo rule;
             - 'Constant' -- constant step size.
-            - 'Best' -- optimal step size inferred via analytical minimization.
     kwargs :
         Additional parameters of line_search method:
 
@@ -35,14 +35,14 @@ class LineSearchTool(object):
             self.alpha_0 = kwargs.get('alpha_0', 1.0)
         elif self._method == 'Constant':
             self.c = kwargs.get('c', 1.0)
-        elif self._method == 'Best':
-            pass
         else:
             raise ValueError('Unknown method {}'.format(method))
 
     @classmethod
-    def from_dict(cls, dict):
-        return cls(**dict)
+    def from_dict(cls, options):
+        if type(options) != dict:
+            raise TypeError('LineSearchTool initializer must be of type dict')
+        return cls(**options)
 
     def to_dict(self):
         return self.__dict__
@@ -71,10 +71,35 @@ class LineSearchTool(object):
         alpha : float or None if failure
             Chosen step size
         """
-        # TODO: Implement line search procedures for Armijo, Wolfe and Constant steps.
-        # TODO: BONUS: Also fallback into oracle.minimize_directional() if method == 'Best'
-        return None
 
+        from scipy.optimize.linesearch import scalar_search_wolfe2
+
+        phi = lambda a: oracle.func_directional(x_k, d_k, a)
+        derphi = lambda a: oracle.grad_directional(x_k, d_k, a)
+
+        if self._method == "Wolfe":
+            alpha = scalar_search_wolfe2(phi, derphi, c1 = self.c1, c2 = self.c2)[0]
+            if alpha == None:
+                alpha = self.armijo_linesearch(phi, derphi, previous_alpha)
+
+        elif self._method == "Armijo":
+            alpha = self.armijo_linesearch(phi, derphi, previous_alpha)
+        else:
+            alpha = self.c
+
+        return alpha
+
+
+    def armijo_linesearch(self, phi, derphi, previous_alpha = None):
+        if previous_alpha is not None:
+            alpha = previous_alpha
+        else:
+            alpha = self.alpha_0
+
+        while phi(alpha) > phi(0) + self.c1*alpha*derphi(0):
+            alpha /= 2
+
+        return alpha
 
 def get_line_search_tool(line_search_options=None):
     if line_search_options:
