@@ -2,7 +2,7 @@ from time import time
 
 import numpy as np
 
-from utils import get_line_search_tool
+from task2.utils import get_line_search_tool
 
 
 def conjugate_gradients(matvec, b, x_0, tolerance=1e-4, max_iter=None, trace=False, display=False):
@@ -170,6 +170,8 @@ def lbfgs(oracle, x_0, tolerance=1e-4, max_iter=500, memory_size=10,
 
         if x_old is not None and g_old is not None:
             lbfgs_history.append((x_k - x_old, g_k - g_old))
+            if len(lbfgs_history) > memory_size:
+                lbfgs_history = lbfgs_history[1:]
 
         if np.linalg.norm(g_k)**2 <= tolerance * np.linalg.norm(g_0)**2:       # TODO: may be wrong
             if trace:
