@@ -77,12 +77,11 @@ def conjugate_gradients(matvec, b, x_0, tolerance=1e-4, max_iter=None, trace=Fal
             return x_k, 'success', history
 
         Adk = matvec(d_k)
-        a = g_k.dot(g_k)/Adk.dot(d_k)
+        a = g_k.dot(g_k.T) / Adk.T.dot(d_k.T)
+        x_k += np.asarray(a*d_k).reshape(-1)
+        g_k_plus_1 = g_k + Adk.dot(a).T
 
-        x_k += a*d_k
-        g_k_plus_1 = g_k + a*Adk
-
-        d_k = -g_k_plus_1 + g_k_plus_1.dot(g_k_plus_1)/g_k.dot(g_k)*d_k
+        d_k = -g_k_plus_1 + g_k_plus_1.dot(g_k_plus_1.T)/g_k.dot(g_k.T)*d_k
         g_k = g_k_plus_1
 
     if trace:
@@ -297,7 +296,7 @@ def hessian_free_newton(oracle, x_0, tolerance=1e-4, max_iter=500,
 
         while not solution_found:
             n_k = min(0.5, np.sqrt(np.linalg.norm(g_k)))
-            d_k, message, _ = conjugate_gradients(lambda v: oracle.hess_vec(x_k, v), -g_k, -g_k,
+            d_k, message, _ = conjugate_gradients(lambda v: oracle.hess_vec(x_k, v.T), -g_k, -g_k,
                                                   tolerance = n_k)
             if message != "success" or g_k.dot(d_k) >= 0:
                 n_k /= 10
