@@ -6,9 +6,9 @@ import numpy as np
 from numpy.linalg import norm
 from numpy.testing import assert_equal, assert_array_almost_equal, assert_allclose
 
-from task2.optimization import conjugate_gradients, lbfgs, hessian_free_newton
-from task2.oracles import QuadraticOracle, hess_vec_finite_diff
-from utils.utils import LineSearchTool
+from optimization import conjugate_gradients, lbfgs, hessian_free_newton
+from oracles import QuadraticOracle, hess_vec_finite_diff
+from utils import LineSearchTool
 
 # Check if it's Python 3
 if not sys.version_info > (3, 0):

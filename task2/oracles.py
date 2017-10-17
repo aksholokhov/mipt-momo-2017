@@ -1,6 +1,7 @@
 import numpy as np
 import scipy
 from scipy.special import expit
+from scipy import sparse
 
 
 class BaseSmoothOracle(object):
@@ -102,16 +103,19 @@ class LogRegL2Oracle(BaseSmoothOracle):
         self.regcoef = regcoef
 
     def func(self, x):
-        # TODO: Implement
-        return None
+        m = self.b.shape[0]
+        return (1 / m ) * np.logaddexp(0, -self.b * self.matvec_Ax(x)).sum() + 1/2*self.regcoef * x.T.dot(x)
 
     def grad(self, x):
-        # TODO: Implement
-        return None
+        m = self.b.shape[0]
+        return (-1 / m) * self.matvec_ATx(self.b * expit(-self.b * self.matvec_Ax(x))) + self.regcoef * x
 
     def hess(self, x):
-        # TODO: Implement
-        return None
+        m = self.b.shape[0]
+        Ax = self.matvec_Ax(x)
+        return (1 / m) * self.matmat_ATsA(self.b * self.b * expit(self.b * Ax) * expit(-self.b * Ax)) + self.regcoef * np.eye(len(x))
+
+
 
 
 class LogRegL2OptimizedOracle(LogRegL2Oracle):
@@ -139,12 +143,14 @@ def create_log_reg_oracle(A, b, regcoef, oracle_type='usual'):
     Auxiliary function for creating logistic regression oracles.
         `oracle_type` must be either 'usual' or 'optimized'
     """
-    matvec_Ax = lambda x: x  # TODO: Implement
-    matvec_ATx = lambda x: x  # TODO: Implement
+    matvec_Ax = lambda x: A.dot(x)
+    matvec_ATx = lambda x: A.T.dot(x)
 
     def matmat_ATsA(s):
-        # TODO: Implement
-        return None
+        if sparse.isspmatrix(A):
+            return A.T.dot(sparse.diags(s).dot(A))
+        else:
+            return A.T.dot(np.diag(s).dot(A))
 
     if oracle_type == 'usual':
         oracle = LogRegL2Oracle
@@ -160,5 +166,8 @@ def hess_vec_finite_diff(func, x, v, eps=1e-5):
     Returns approximation of the matrix product 'Hessian times vector'
     using finite differences.
     """
-    # TODO: Implement numerical estimation of the Hessian times vector
-    return None
+    return np.array([(func(x + eps * e_i + eps * v)
+                       - func(x + eps * e_i)
+                       - func(x + eps * v)
+                       + func(x)) / eps ** 2
+                      for e_i in np.eye(x.shape[0])])
