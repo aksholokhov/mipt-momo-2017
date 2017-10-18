@@ -300,8 +300,8 @@ def hessian_free_newton(oracle, x_0, tolerance=1e-4, max_iter=500,
                                                   tolerance = n_k)
             if message != "success" or g_k.dot(d_k) >= 0:
                 n_k /= 10
+                x_0 = d_k
                 continue
-
             solution_found = True
 
         a_k = line_search_tool.line_search(oracle, x_k, d_k)
