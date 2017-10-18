@@ -95,10 +95,11 @@ class LogRegL2Oracle(BaseSmoothOracle):
             Computes matrix-matrix-matrix product A^T * Diag(s) * A,
     """
 
-    def __init__(self, matvec_Ax, matvec_ATx, matmat_ATsA, b, regcoef):
+    def __init__(self, matvec_Ax, matvec_ATx, matmat_ATsA, b, regcoef, matmat_sA = None):
         self.matvec_Ax = matvec_Ax
         self.matvec_ATx = matvec_ATx
         self.matmat_ATsA = matmat_ATsA
+        self.matmat_sA = matmat_sA
         self.b = b
         self.regcoef = regcoef
 
@@ -115,7 +116,13 @@ class LogRegL2Oracle(BaseSmoothOracle):
         Ax = self.matvec_Ax(x)
         return (1 / m) * self.matmat_ATsA(self.b * self.b * expit(self.b * Ax) * expit(-self.b * Ax)) + self.regcoef * np.eye(len(x))
 
-
+    def hess_vec(self, x, v):
+        m = self.b.shape[0]
+        Ax = self.matvec_Ax(x)
+        Av = self.matvec_Ax(v)
+        S = self.b * self.b * expit(self.b * Ax) * expit(-self.b * Ax)
+        sA = self.matmat_sA(S)
+        return (1 / m) * sA.T.dot(Av) + self.regcoef * v
 
 
 class LogRegL2OptimizedOracle(LogRegL2Oracle):
@@ -152,13 +159,19 @@ def create_log_reg_oracle(A, b, regcoef, oracle_type='usual'):
         else:
             return A.T.dot(np.diag(s).dot(A))
 
+    def matmat_sA(s):
+        if sparse.isspmatrix(A):
+            return sparse.diags(s).dot(A)
+        else:
+            return np.diag(s).dot(A)
+
     if oracle_type == 'usual':
         oracle = LogRegL2Oracle
     elif oracle_type == 'optimized':
         oracle = LogRegL2OptimizedOracle
     else:
         raise 'Unknown oracle_type=%s' % oracle_type
-    return oracle(matvec_Ax, matvec_ATx, matmat_ATsA, b, regcoef)
+    return oracle(matvec_Ax, matvec_ATx, matmat_ATsA, b, regcoef, matmat_sA)
 
 
 def hess_vec_finite_diff(func, x, v, eps=1e-5):
