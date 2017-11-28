@@ -9,8 +9,8 @@ import scipy.optimize
 import sys
 import warnings
 
-import optimization
-import oracles
+import task3.optimization
+import task3.oracles
 
 
 def test_python3():
