@@ -1,6 +1,6 @@
 from collections import defaultdict
 import numpy as np
-from scipy.linalg import norm, solve, cholesky, cho_solve
+from scipy.linalg import norm, solve, cholesky, cho_solve, cho_factor
 from time import time
 import datetime
 from utils.utils import get_line_search_tool
@@ -83,12 +83,18 @@ def barrier_method_lasso(A, b, reg_coef, x_0, u_0, tolerance=1e-5,
             - history['x'] : list of np.arrays, containing the trajectory of the algorithm. ONLY STORE IF x.size <= 2
     """
 
+
     n = max(x_0.shape)
+
+    def ldg(x):
+        Ax_b = A.dot(x[:n]) - b
+        ATAx_b = A.T.dot(Ax_b)
+        return lasso_duality_gap(x[:n], Ax_b, ATAx_b, b, reg_coef)
 
     x_k = np.concatenate([x_0, u_0])
 
     if trace:
-        history = {'time': [], 'func': [], 'duality_gap' : []}
+        history = {'time': [], 'func': [], "duality_gap" : []}
         if len(x_0) <= 2:
             history['x'] = []
     else:
@@ -110,56 +116,51 @@ def barrier_method_lasso(A, b, reg_coef, x_0, u_0, tolerance=1e-5,
         q[i + n, i + n] = -1
 
     for k in range(max_iter + 1):
-
-        x_new, message, history = barrier_lasso_subroutine_solver(oracle, x_k,
+        x_new, message, inner_history = barrier_lasso_subroutine_solver(oracle, x_k,
                                                                   max_iter=max_iter_inner,
                                                                   tolerance=tolerance_inner,
                                                                   line_search_options={
+                                                                      'method': 'Armijo',
                                                                       'c1' : c1,
                                                                       'alpha_0' : 1
                                                                   },
-                                                                  cons = q)
+                                                                  cons = q,
+                                                                  ldg = ldg,
+                                                                  init_time = time())
 
-        Ax_b = A.dot(x_new[:n]) - b
-        ATAx_b = A.T.dot(Ax_b)
-        ldg = lasso_duality_gap(x_new[:n], Ax_b, ATAx_b, b, reg_coef)
-
-        if ldg <= tolerance:
-            if trace:
-                current_time = time()
-                history['time'].append(current_time - start)
-                history['func'].append(Ax_b.dot(Ax_b.T) + reg_coef*np.linalg.norm(x_new[:n], ord = 1))
-                history['duality_gap'].append(ldg)
-                if len(x_0) <= 2:
-                    history['x'].append(np.copy(x_k))
-
-            return x_k, 'success', history
-
+        cur_ldg = ldg(x_new)
 
         if trace:
+            Ax_b = A.dot(x_new[:n]) - b
             current_time = time()
+            history['time'] += inner_history["time"]
             history['time'].append(current_time - start)
+            history['func'] += inner_history["func"]
             history['func'].append(Ax_b.dot(Ax_b.T) + reg_coef * np.linalg.norm(x_new[:n], ord=1))
-            history['duality_gap'].append(ldg)
+            history['duality_gap'] += inner_history['duality_gap']
+            history["duality_gap"].append(cur_ldg)
             if len(x_0) <= 2:
                 history['x'].append(np.copy(x_k))
+
+        if cur_ldg <= tolerance:
+            return (x_k[:n], x_k[n:]), 'success', history
 
         t = t * gamma
         oracle = LassoBarrierOracle.fromOther(oracle, t)
         x_k = x_new
 
-    return x_k, 'iterations_exceeded', history
+    return (x_k[:n], x_k[n:]), 'iterations_exceeded', history
 
 
 
 def barrier_lasso_subroutine_solver(oracle, x_0, trace = True, tolerance=1e-5, max_iter=100,
-           line_search_options=None, cons = None):
+           line_search_options=None, cons = None, ldg = None, init_time = 0):
 
     x_k = np.copy(x_0)
     n = int(max(x_k.shape)/2)
 
     if trace:
-        history = {'time': [], 'func': [], 'grad_norm': []}
+        history = {'time': [], 'func': [], 'duality_gap': []}
     else:
         history = None
 
@@ -174,9 +175,9 @@ def barrier_lasso_subroutine_solver(oracle, x_0, trace = True, tolerance=1e-5, m
         if np.linalg.norm(g_k) ** 2 <= tolerance * np.linalg.norm(g_0) ** 2:
             if trace:
                 current_time = time()
-                history['time'].append(current_time - start)
+                history['time'].append(current_time - start + init_time)
                 history['func'].append(f_k)
-                history['grad_norm'].append(np.linalg.norm(g_k))
+                history['duality_gap'].append(ldg(x_k))
             return x_k, 'success', history
 
         try:
@@ -188,17 +189,20 @@ def barrier_lasso_subroutine_solver(oracle, x_0, trace = True, tolerance=1e-5, m
             else:
                 return x_k, "computational_error", history
 
-        I = [i for i, q in enumerate(cons) if q.dot(d_k) <= 0]
-        alpha_max = min([-cons[i].dot(x_k[:n].T)/(cons[i].dot(d_k.T)) for i in I])
-        line_search_options["alpha_0"] = min(1, 0.99*alpha_max)
+        I = [i for i, q in enumerate(cons) if q.dot(d_k) > 0]
+        if len(I) != 0:
+            alpha_max = 0.99*min([-cons[i].dot(x_k.T)/(cons[i].dot(d_k.T)) for i in I])
+        else:
+            alpha_max = 1
+        line_search_options["alpha_0"] = min(1, alpha_max)
         line_search_tool = get_line_search_tool(line_search_options)
         a_k = line_search_tool.line_search(oracle, x_k, d_k)
 
         if trace:
             current_time = time()
-            history['time'].append(current_time - start)
+            history['time'].append(current_time - start + init_time)
             history['func'].append(f_k)
-            history['grad_norm'].append(np.linalg.norm(g_k))
+            history['duality_gap'].append(ldg(x_k))
 
         x_k = x_k + a_k * d_k
 

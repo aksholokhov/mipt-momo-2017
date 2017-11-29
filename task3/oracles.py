@@ -7,7 +7,7 @@ def lasso_duality_gap(x, Ax_b, ATAx_b, b, reg_coef):
     Estimates f(x) - f* via duality gap for 
         f(x) := 0.5 * ||Ax - b||_2^2 + regcoef * ||x||_1.
     """
-    mu = min(1, reg_coef / max(ATAx_b)) * Ax_b
+    mu = min(1, reg_coef / abs(ATAx_b).max()) * Ax_b
     return 1/2*Ax_b.dot(Ax_b.T) + reg_coef * scipy.linalg.norm(x, ord=1) + 1 / 2 * mu.dot(mu.T) + b.dot(mu.T)
 
 
@@ -66,7 +66,7 @@ class LassoBarrierOracle(BaseSmoothOracle):
             self.__ATA = self.__AT.dot(A)
         else:
             self.__ATA = ATA
-        self.__n = max(b.shape)
+        self.__n = A.shape[1]
         self.__regcoef = reg_coef
         self.__t = t
 
@@ -76,26 +76,29 @@ class LassoBarrierOracle(BaseSmoothOracle):
 
     def func(self, y):
         n = self.__n
-        x = y[:n], u = y[n+1:]
+        x = y[:n]
+        u = y[n:]
         Ax_b = self.__A.dot(x.T) - self.__b
         return self.__t*(1/2*Ax_b.dot(Ax_b.T) +  self.__regcoef*u.sum())\
-               + sum([np.log(x_i + u_i) + np.log(u_i - x_i) for x_i, u_i in zip(x, u)])
+               - sum([np.log(x_i + u_i) + np.log(u_i - x_i) for x_i, u_i in zip(x, u)])
 
     def grad(self, y):
         n = self.__n
-        x = y[:n], u = y[n + 1:]
+        x = y[:n]
+        u = y[n:]
         res = np.zeros(2*n)
         res[:n] = self.__t*(self.__ATA.dot(x.T) - self.__ATb) \
-                  + np.array([1/(x_i + u_i) - 1/(u_i - x_i) for x_i, u_i in zip(x, u)])
-        res[n+1:] = np.array([1/(x_i + u_i) + 1/(u_i - x_i) for x_i, u_i in zip(x, u)]) + self.__t*self.__regcoef
+                  - np.array([1/(x_i + u_i) - 1/(u_i - x_i) for x_i, u_i in zip(x, u)])
+        res[n:] = - np.array([1/(x_i + u_i) + 1/(u_i - x_i) for x_i, u_i in zip(x, u)]) + self.__t*self.__regcoef*np.ones(n)
         return res
 
     def hess(self, y):
         n = self.__n
-        x = y[:n], u = y[n + 1:]
+        x = y[:n]
+        u = y[n:]
         res = np.zeros((2*n, 2*n))
-        res[:n, :n] = self.__t*self.__ATA + np.diag(np.array([-1/(x_i + u_i)**2 - 1/(u_i - x_i)**2 for x_i, u_i in zip(x, u)]))
-        res[n+1:, :n] = np.diag(np.array([-1/(x_i + u_i)**2 + 1/(u_i - x_i)**2 for x_i, u_i in zip(x, u)]))
-        res[:n, n+1] = res[n+1:, :n]
-        res[n+1:, n+1:] = np.diag(np.array([-1/(x_i + u_i)**2 - 1/(u_i - x_i)**2 for x_i, u_i in zip(x, u)]))
+        res[:n, :n] = self.__t*self.__ATA - np.diag(np.array([-1/(x_i + u_i)**2 - 1/(u_i - x_i)**2 for x_i, u_i in zip(x, u)]))
+        res[n:, :n] = - np.diag(np.array([-1/(x_i + u_i)**2 + 1/(u_i - x_i)**2 for x_i, u_i in zip(x, u)]))
+        res[:n, n:] = res[n:, :n]
+        res[n:, n:] = - np.diag(np.array([-1/(x_i + u_i)**2 - 1/(u_i - x_i)**2 for x_i, u_i in zip(x, u)]))
         return res
