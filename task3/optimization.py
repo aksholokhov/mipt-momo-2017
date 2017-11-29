@@ -1,9 +1,10 @@
 from collections import defaultdict
 import numpy as np
-from numpy.linalg import norm, solve
+from scipy.linalg import norm, solve, cholesky, cho_solve
 from time import time
 import datetime
-
+from utils.utils import get_line_search_tool
+from task3.oracles import LassoBarrierOracle
 
 def barrier_method_lasso(A, b, reg_coef, x_0, u_0, tolerance=1e-5, 
                          tolerance_inner=1e-8, max_iter=100, 
@@ -81,4 +82,114 @@ def barrier_method_lasso(A, b, reg_coef, x_0, u_0, tolerance=1e-5,
             - history['duality_gap'] : list of duality gaps
             - history['x'] : list of np.arrays, containing the trajectory of the algorithm. ONLY STORE IF x.size <= 2
     """
-    # TODO: implement.
+
+    n = max(x_0.shape)
+
+    x_k = np.concatenate([x_0, u_0])
+
+    if trace:
+        history = {'time': [], 'func': [], 'duality_gap' : []}
+        if len(x_0) <= 2:
+            history['x'] = []
+    else:
+        history = None
+
+    if display:
+        print("Debug info")
+
+    t = t_0
+    oracle = LassoBarrierOracle(A, b, reg_coef, t)
+
+    start = time()
+
+    for k in range(max_iter + 1):
+
+        alpha_max = None
+
+        x_new, message, history = barrier_lasso_subroutine_solver(oracle, x_k,
+                                                                  max_iter=max_iter_inner,
+                                                                  tolerance=tolerance_inner,
+                                                                  line_search_options={
+                                                                      'c1' : c1,
+                                                                      'alpha_0' : alpha_max
+                                                                  })
+
+        Ax_b = A.dot(x_new[:n]) - b
+        ATAx_b = A.T.dot(Ax_b)
+        ldg = lasso_duality_gap(x_new[:n], Ax_b, ATAx_b, b, reg_coef)
+
+        if ldg <= tolerance:
+            if trace:
+                current_time = time()
+                history['time'].append(current_time - start)
+                history['func'].append(Ax_b.dot(Ax_b.T) + reg_coef*np.linalg.norm(x_new[:n], ord = 1))
+                history['duality_gap'].append(ldg)
+                if len(x_0) <= 2:
+                    history['x'].append(np.copy(x_k))
+
+            return x_k, 'success', history
+
+
+        if trace:
+            current_time = time()
+            history['time'].append(current_time - start)
+            history['func'].append(Ax_b.dot(Ax_b.T) + reg_coef * np.linalg.norm(x_new[:n], ord=1))
+            history['duality_gap'].append(ldg)
+            if len(x_0) <= 2:
+                history['x'].append(np.copy(x_k))
+
+        t = t * gamma
+        oracle = LassoBarrierOracle.fromOther(oracle, t)
+        x_k = x_new
+
+    return x_k, 'iterations_exceeded', history
+
+
+
+def barrier_lasso_subroutine_solver(oracle, x_0, trace = True, tolerance=1e-5, max_iter=100,
+           line_search_options=None):
+
+    line_search_tool = get_line_search_tool(line_search_options)
+    x_k = np.copy(x_0)
+
+    if trace:
+        history = {'time': [], 'func': [], 'grad_norm': []}
+    else:
+        history = None
+
+    g_0 = oracle.grad(x_0)
+
+    start = time()
+    for k in range(max_iter + 1):
+        f_k = oracle.func(x_k)
+        g_k = oracle.grad(x_k)
+        h_k = oracle.hess(x_k)
+
+        if np.linalg.norm(g_k) ** 2 <= tolerance * np.linalg.norm(g_0) ** 2:
+            if trace:
+                current_time = time()
+                history['time'].append(current_time - start)
+                history['func'].append(f_k)
+                history['grad_norm'].append(np.linalg.norm(g_k))
+            return x_k, 'success', history
+
+        try:
+            U = cholesky(h_k, check_finite=True)
+            d_k = cho_solve((U, False), -g_k, check_finite=True)
+        except np.linalg.LinAlgError as e:
+            if "not positive" in str(e):
+                return x_k, "newton_direction_error", history
+            else:
+                return x_k, "computational_error", history
+
+        a_k = line_search_tool.line_search(oracle, x_k, d_k)
+
+        if trace:
+            current_time = time()
+            history['time'].append(current_time - start)
+            history['func'].append(f_k)
+            history['grad_norm'].append(np.linalg.norm(g_k))
+
+        x_k = x_k + a_k * d_k
+
+    return x_k, 'iterations_exceeded', history
