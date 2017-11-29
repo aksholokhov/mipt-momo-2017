@@ -261,7 +261,6 @@ def newton(oracle, x_0, tolerance=1e-5, max_iter=100,
        Found optimal point: [ 0.  1.  2.  3.  4.]
     """
 
-    # TODO: Implement Newton's method.
     # Use line_search_tool.line_search() for adaptive step size.
 
     line_search_tool = get_line_search_tool(line_search_options)

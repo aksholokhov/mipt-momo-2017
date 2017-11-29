@@ -2,7 +2,7 @@ from time import time
 
 import numpy as np
 
-from task2.utils import get_line_search_tool
+from utils.utils import get_line_search_tool
 
 
 def conjugate_gradients(matvec, b, x_0, tolerance=1e-4, max_iter=None, trace=False, display=False):

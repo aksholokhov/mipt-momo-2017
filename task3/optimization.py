@@ -102,17 +102,23 @@ def barrier_method_lasso(A, b, reg_coef, x_0, u_0, tolerance=1e-5,
 
     start = time()
 
-    for k in range(max_iter + 1):
+    q = np.zeros((2*n, 2*n))
+    for i in range(n):
+        q[i, i] = 1
+        q[i, i + n] = -1
+        q[i + n, i] = -1
+        q[i + n, i + n] = -1
 
-        alpha_max = None
+    for k in range(max_iter + 1):
 
         x_new, message, history = barrier_lasso_subroutine_solver(oracle, x_k,
                                                                   max_iter=max_iter_inner,
                                                                   tolerance=tolerance_inner,
                                                                   line_search_options={
                                                                       'c1' : c1,
-                                                                      'alpha_0' : alpha_max
-                                                                  })
+                                                                      'alpha_0' : 1
+                                                                  },
+                                                                  cons = q)
 
         Ax_b = A.dot(x_new[:n]) - b
         ATAx_b = A.T.dot(Ax_b)
@@ -147,10 +153,10 @@ def barrier_method_lasso(A, b, reg_coef, x_0, u_0, tolerance=1e-5,
 
 
 def barrier_lasso_subroutine_solver(oracle, x_0, trace = True, tolerance=1e-5, max_iter=100,
-           line_search_options=None):
+           line_search_options=None, cons = None):
 
-    line_search_tool = get_line_search_tool(line_search_options)
     x_k = np.copy(x_0)
+    n = int(max(x_k.shape)/2)
 
     if trace:
         history = {'time': [], 'func': [], 'grad_norm': []}
@@ -182,6 +188,10 @@ def barrier_lasso_subroutine_solver(oracle, x_0, trace = True, tolerance=1e-5, m
             else:
                 return x_k, "computational_error", history
 
+        I = [i for i, q in enumerate(cons) if q.dot(d_k) <= 0]
+        alpha_max = min([-cons[i].dot(x_k[:n].T)/(cons[i].dot(d_k.T)) for i in I])
+        line_search_options["alpha_0"] = min(1, 0.99*alpha_max)
+        line_search_tool = get_line_search_tool(line_search_options)
         a_k = line_search_tool.line_search(oracle, x_k, d_k)
 
         if trace:
