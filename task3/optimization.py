@@ -134,7 +134,7 @@ def barrier_method_lasso(A, b, reg_coef, x_0, u_0, tolerance=1e-5,
             Ax_b = A.dot(x_new[:n]) - b
             current_time = time()
             history['time'] += inner_history["time"]
-            history['time'].append(current_time - start)
+            history['time'].append(current_time)
             history['func'] += inner_history["func"]
             history['func'].append(Ax_b.dot(Ax_b.T) + reg_coef * np.linalg.norm(x_new[:n], ord=1))
             history['duality_gap'] += inner_history['duality_gap']
@@ -143,12 +143,14 @@ def barrier_method_lasso(A, b, reg_coef, x_0, u_0, tolerance=1e-5,
                 history['x'].append(np.copy(x_k))
 
         if cur_ldg <= tolerance:
+            history['time'] = np.array(history["time"]) - start
             return (x_k[:n], x_k[n:]), 'success', history
 
         t = t * gamma
         oracle = LassoBarrierOracle.fromOther(oracle, t)
         x_k = x_new
 
+    history['time'] = np.array(history["time"]) - start
     return (x_k[:n], x_k[n:]), 'iterations_exceeded', history
 
 
@@ -175,7 +177,7 @@ def barrier_lasso_subroutine_solver(oracle, x_0, trace = True, tolerance=1e-5, m
         if np.linalg.norm(g_k) ** 2 <= tolerance * np.linalg.norm(g_0) ** 2:
             if trace:
                 current_time = time()
-                history['time'].append(current_time - start + init_time)
+                history['time'].append(current_time)
                 history['func'].append(f_k)
                 history['duality_gap'].append(ldg(x_k))
             return x_k, 'success', history
@@ -200,7 +202,7 @@ def barrier_lasso_subroutine_solver(oracle, x_0, trace = True, tolerance=1e-5, m
 
         if trace:
             current_time = time()
-            history['time'].append(current_time - start + init_time)
+            history['time'].append(current_time)
             history['func'].append(f_k)
             history['duality_gap'].append(ldg(x_k))
 
