@@ -109,10 +109,11 @@ class LeastSquaresOracle(BaseSmoothOracle):
         self.b = b
 
     def func(self, x):
-        return 0.5 * sparse.linalg.norm(self.matvec_Ax(x.T)- self.b.T)**2
+        Ax_b = self.matvec_Ax(x.T) - self.b
+        return 0.5 * Ax_b.dot(Ax_b.T)
 
     def grad(self, x):
-        return self.matvec_ATx(self.matvec_Ax(x.T) - self.b.T)
+        return self.matvec_ATx(self.matvec_Ax(x.T) - self.b)
 
 
 class L1RegOracle(BaseProxOracle):
@@ -124,19 +125,27 @@ class L1RegOracle(BaseProxOracle):
         self.regcoef = regcoef
 
     def func(self, x):
-        return self.regcoef*sparse.linalg.norm(x, ord=1)
+        return self.regcoef*abs(x).sum()
 
     def prox(self, x, alpha):
-        p = sparse.lil_matrix((1, x.shape[1]))
-        for i, j in zip(*x.nonzero()):
-            c = x[i, j]
-            if  c >= alpha:
-                p[i, j] = c - alpha
-            elif c <= alpha:
-                p[i, j] = c + alpha
+        def soft_threshold(c, alpha):
+            if c >= alpha:
+                return c - alpha
+            elif c <= -alpha:
+                return c + alpha
             else:
-                p[i, j] = 0
-        return p
+                return 0
+
+        if sparse.issparse(x):
+            p = np.squeeze(x.toarray())
+        else:
+            p = x
+        res = np.array([soft_threshold(e, alpha*self.regcoef) for e in p])
+        if sparse.issparse(x):
+            return sparse.csr_matrix(res)
+        return res
+
+
 
 
 
@@ -147,11 +156,14 @@ class LassoProxOracle(BaseCompositeOracle):
         h(x) = regcoef * ||x||_1 is a simple part.
     """
     def duality_gap(self, x):
-        Ax_b = self._f.matvec_Ax(x.T) - self._f.b.T
+        Ax_b = self._f.matvec_Ax(x.T) - self._f.b
         ATAx_b = self._f.matvec_ATx(Ax_b)
 
         mu = min(1, self._h.regcoef / abs(ATAx_b).max()) * Ax_b
-        return 1 / 2 * Ax_b.dot(Ax_b.T) + self._h.regcoef * scipy.linalg.norm(x, ord=1) + 1 / 2 * mu.dot(mu.T) + self._f.b.dot(mu.T)
+        res = 1 / 2 * Ax_b.dot(Ax_b.T) + 1 / 2 * mu.dot(mu.T) + self._f.b.dot(mu.T)
+        if sparse.issparse(res):
+            res = res[0, 0]
+        return res + self._h.regcoef * abs(x).sum()
 
 
 class LassoNonsmoothOracle(BaseNonsmoothConvexOracle):
@@ -159,7 +171,29 @@ class LassoNonsmoothOracle(BaseNonsmoothConvexOracle):
     Oracle for nonsmooth convex function
         0.5 * ||Ax - b||_2^2 + regcoef * ||x||_1.
     """
-    # TODO: implement.
+    def __init__(self, matvec_Ax, matvec_ATx, b, regcoef):
+        self.matvec_Ax = matvec_Ax
+        self.matvec_ATx = matvec_ATx
+        self.b = b
+        self.regcoef = regcoef
+
+    def func(self, x):
+        Ax_b = self.matvec_Ax(x.T)- self.b
+        return 0.5 * Ax_b.dot(Ax_b.T) + self.regcoef*abs(x).sum()
+
+    def subgrad(self, x):
+        sbg = self.regcoef*x.sign().T if sparse.issparse(x) else self.regcoef*np.sign(x)
+        return self.matvec_ATx(self.matvec_Ax(x.T) - self.b) + sbg
+
+    def duality_gap(self, x):
+        Ax_b = self.matvec_Ax(x.T) - self.b
+        ATAx_b = self.matvec_ATx(Ax_b)
+
+        mu = min(1, self.regcoef / abs(ATAx_b).max()) * Ax_b
+        res = 1 / 2 * Ax_b.dot(Ax_b.T) + 1 / 2 * mu.dot(mu.T) + self.b.dot(mu.T)
+        if sparse.issparse(res):
+            res = res[0, 0]
+        return res + self.regcoef * abs(x).sum()
 
 
 def lasso_duality_gap(x, Ax_b, ATAx_b, b, regcoef):
@@ -168,7 +202,7 @@ def lasso_duality_gap(x, Ax_b, ATAx_b, b, regcoef):
         f(x) := 0.5 * ||Ax - b||_2^2 + regcoef * ||x||_1.
     """
     mu = min(1, regcoef / abs(ATAx_b).max()) * Ax_b
-    return 1 / 2 * Ax_b.dot(Ax_b.T) + regcoef * scipy.linalg.norm(x, ord=1) + 1 / 2 * mu.dot(mu.T) + b.dot(mu.T)
+    return 1 / 2 * Ax_b.dot(Ax_b.T) + regcoef * abs(x).sum() + 1 / 2 * mu.dot(mu.T) + b.dot(mu.T)
     
 
 def create_lasso_prox_oracle(A, b, regcoef):

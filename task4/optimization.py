@@ -60,23 +60,23 @@ def subgradient_method(oracle, x_0, tolerance=1e-2, max_iter=1000, alpha_0=1,
         print("Debug info")
 
     start = time()
-    for k in range(max_iter):
-        sg_k = oracle.subgrad(x_k)
-        a_k = alpha_0/np.sqrt(k+1)
-        x_k = x_k - a_k*sg_k/norm(sg_k)
-
+    for k in range(max_iter+1):
         dg = oracle.duality_gap(x_k)
 
         if trace:
             current_time = time()
             history['time'].append(current_time - start)
             history['func'].append(oracle.func(x_k))
-            history['grad_norm'].append(dg)
+            history['duality_gap'].append(dg)
             if max(x_0.shape) <= 2:
                 history['x'].append(np.copy(x_k))
 
         if dg <= tolerance:    # TODO: Check the correctness
             return x_k, 'success', history
+
+        sg_k = oracle.subgrad(x_k)
+        a_k = alpha_0/np.sqrt(k+1)
+        x_k = x_k - a_k*sg_k/np.sqrt(sg_k.dot(sg_k.T))
 
     return x_k, 'iterations_exceeded', history
 
@@ -141,12 +141,13 @@ def proximal_gradient_descent(oracle, x_0, L_0=1, tolerance=1e-5,
 
     start = time()
     L = L_0
-    for k in range(max_iter):
+    for k in range(max_iter+1):
         g_k = oracle.grad(x_k)
         f_k = oracle.func(x_k)
         while True:
-            y = oracle.prox(x_k - 1/L*g_k)
-            if oracle._f.func(y) <= f_k + g_k.dot((y - x_k).T) + L/2*norm(y - x_k)**2:
+            y = oracle.prox(x_k - 1/L*g_k, 1/L)
+            y_xk = y - x_k
+            if oracle._f.func(y) <= f_k + g_k.dot(y_xk.T) + L/2*y_xk.dot(y_xk.T):
                 break
             L /= 2
         x_k = y
@@ -227,7 +228,7 @@ def accelerated_proximal_gradient_descent(oracle, x_0, L_0=1.0, tolerance=1e-5,
     phi_opt = oracle.func(x_0)
     af = 0
     start = time()
-    for k in range(max_iter):
+    for k in range(max_iter+1):
         while True:
             if k == 1:
                 a = 1/L
