@@ -1,7 +1,7 @@
 import numpy as np
 import scipy
 from scipy.special import expit
-
+from scipy import sparse
 
 class BaseSmoothOracle(object):
     """
@@ -103,7 +103,16 @@ class LeastSquaresOracle(BaseSmoothOracle):
     Oracle for least-squares regression.
         f(x) = 0.5 ||Ax - b||_2^2
     """
-    # TODO: implement.
+    def __init__(self, matvec_Ax, matvec_ATx, b):
+        self.matvec_Ax = matvec_Ax
+        self.matvec_ATx = matvec_ATx
+        self.b = b
+
+    def func(self, x):
+        return 0.5 * sparse.linalg.norm(self.matvec_Ax(x.T)- self.b.T)**2
+
+    def grad(self, x):
+        return self.matvec_ATx(self.matvec_Ax(x.T) - self.b.T)
 
 
 class L1RegOracle(BaseProxOracle):
@@ -111,7 +120,24 @@ class L1RegOracle(BaseProxOracle):
     Oracle for L1-regularizer.
         h(x) = regcoef * ||x||_1.
     """
-    # TODO: implement.
+    def __init__(self, regcoef):
+        self.regcoef = regcoef
+
+    def func(self, x):
+        return self.regcoef*sparse.linalg.norm(x, ord=1)
+
+    def prox(self, x, alpha):
+        p = sparse.lil_matrix((1, x.shape[1]))
+        for i, j in zip(*x.nonzero()):
+            c = x[i, j]
+            if  c >= alpha:
+                p[i, j] = c - alpha
+            elif c <= alpha:
+                p[i, j] = c + alpha
+            else:
+                p[i, j] = 0
+        return p
+
 
 
 class LassoProxOracle(BaseCompositeOracle):
@@ -120,7 +146,12 @@ class LassoProxOracle(BaseCompositeOracle):
         f(x) = 0.5 * ||Ax - b||_2^2 is a smooth part,
         h(x) = regcoef * ||x||_1 is a simple part.
     """
-    # TODO: implement.
+    def duality_gap(self, x):
+        Ax_b = self._f.matvec_Ax(x.T) - self._f.b.T
+        ATAx_b = self._f.matvec_ATx(Ax_b)
+
+        mu = min(1, self._h.regcoef / abs(ATAx_b).max()) * Ax_b
+        return 1 / 2 * Ax_b.dot(Ax_b.T) + self._h.regcoef * scipy.linalg.norm(x, ord=1) + 1 / 2 * mu.dot(mu.T) + self._f.b.dot(mu.T)
 
 
 class LassoNonsmoothOracle(BaseNonsmoothConvexOracle):
@@ -136,7 +167,8 @@ def lasso_duality_gap(x, Ax_b, ATAx_b, b, regcoef):
     Estimates f(x) - f* via duality gap for 
         f(x) := 0.5 * ||Ax - b||_2^2 + regcoef * ||x||_1.
     """
-    # TODO: implement.
+    mu = min(1, regcoef / abs(ATAx_b).max()) * Ax_b
+    return 1 / 2 * Ax_b.dot(Ax_b.T) + regcoef * scipy.linalg.norm(x, ord=1) + 1 / 2 * mu.dot(mu.T) + b.dot(mu.T)
     
 
 def create_lasso_prox_oracle(A, b, regcoef):
