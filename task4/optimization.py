@@ -233,20 +233,29 @@ def accelerated_proximal_gradient_descent(oracle, x_0, L_0=1.0, tolerance=1e-5,
 
     L = L_0
     A = 0
-    y = x_0
-    v = x_0
+    y_k = x_0
+    v_k = x_0
     x_opt = x_0
     phi_opt = oracle.func(x_0)
     af = 0
     start = time()
-    for k in range(max_iter+1):
+    for k in range(max_iter):
+
+        dg = oracle.duality_gap(y_k)
+
+        if trace:
+            current_time = time()
+            history['time'].append(current_time - start)
+            history['func'].append(oracle.func(y_k))
+            history['duality_gap'].append(dg)
+
+        if dg < tolerance:
+            return x_opt, "success", history
+
         while True:
-            if k == 1:
-                a = 1/L
-            else:
-                a = 1+np.sqrt(1 + 4*L*A)/(2*L)
+            a = (1+np.sqrt(1 + 4*L*A))/(2*L)
             tau = a/(a+A)
-            z = tau*v + (1 - tau)*y
+            z = tau*v_k + (1 - tau)*y_k
             y = oracle.prox(z - 1/L*oracle.grad(z), 1/L)
             f_y = oracle._f.func(y)
             f_z = oracle._f.func(z)
@@ -260,24 +269,23 @@ def accelerated_proximal_gradient_descent(oracle, x_0, L_0=1.0, tolerance=1e-5,
                 x_opt = z
                 phi_opt = phi_z
             y_z = y - z
-            if f_y <= f_z + g_z.dot((y - z).T) + L/2*y_z.dot(y_z.T)**2:
+            if f_y <= f_z + g_z.dot(y_z.T) + L/2*y_z.dot(y_z.T):
                 break
-            L /= 2
+            L *= 2
 
-        dg = oracle.duality_gap(y)
-
-        if trace:
-            current_time = time()
-            history['time'].append(current_time - start)
-            history['func'].append(phi_y)
-            history['duality_gap'].append(dg)
-
-        if dg < tolerance:
-            return x_opt, "success", history
-
-        A = A + a
-        af += a*g_z
-        v = oracle.prox(x_0 - af, 1)
+        z_k = z
+        y_k = y
+        A += a
+        af += a*oracle.grad(z_k)
+        v_k = oracle.prox(x_0 - af, A)
         L = max(L_0, L/2)
+
+    dg = oracle.duality_gap(y)
+
+    if trace:
+        current_time = time()
+        history['time'].append(current_time - start)
+        history['func'].append(oracle.func(y))
+        history['duality_gap'].append(dg)
 
     return x_opt, "iterations_exceeded", history
