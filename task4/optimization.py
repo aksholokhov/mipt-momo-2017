@@ -141,7 +141,7 @@ def proximal_gradient_descent(oracle, x_0, L_0=1, tolerance=1e-5,
 
     start = time()
     L = L_0
-    for k in range(max_iter+1):
+    for k in range(max_iter):
 
         dg = oracle.duality_gap(x_k)
 
@@ -157,7 +157,7 @@ def proximal_gradient_descent(oracle, x_0, L_0=1, tolerance=1e-5,
             return x_k, 'success', history
 
         g_k = oracle.grad(x_k)
-        f_k = oracle.func(x_k)
+        f_k = oracle._f.func(x_k)
         while True:
             y = oracle.prox(x_k - 1/L*g_k, 1/L)
             y_xk = y - x_k
@@ -166,6 +166,15 @@ def proximal_gradient_descent(oracle, x_0, L_0=1, tolerance=1e-5,
             L *= 2
         x_k = y
         L = max(L_0, L/2)
+
+    dg = oracle.duality_gap(x_k)
+    if trace:
+        current_time = time()
+        history['time'].append(current_time - start)
+        history['func'].append(oracle.func(x_k))
+        history['duality_gap'].append(dg)
+        if max(x_0.shape) <= 2:
+            history['x'].append(np.copy(x_k))
 
 
     return x_k, 'iterations_exceeded', history
