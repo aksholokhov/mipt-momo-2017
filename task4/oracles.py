@@ -109,11 +109,15 @@ class LeastSquaresOracle(BaseSmoothOracle):
         self.b = b
 
     def func(self, x):
-        Ax_b = self.matvec_Ax(x.T) - self.b
-        return 0.5 * Ax_b.dot(Ax_b.T)
+        Ax_b = self.matvec_Ax(x.T).T - self.b
+        if sparse.issparse(Ax_b):
+            res = 0.5 * Ax_b.dot(Ax_b.T)[0, 0]
+        else:
+            res = 0.5 * Ax_b.dot(Ax_b.T)
+        return res
 
     def grad(self, x):
-        return self.matvec_ATx(self.matvec_Ax(x.T) - self.b)
+        return self.matvec_ATx((self.matvec_Ax(x.T).T - self.b).T)
 
 
 class L1RegOracle(BaseProxOracle):
@@ -153,11 +157,14 @@ class LassoProxOracle(BaseCompositeOracle):
         h(x) = regcoef * ||x||_1 is a simple part.
     """
     def duality_gap(self, x):
-        Ax_b = self._f.matvec_Ax(x.T) - self._f.b
+        Ax_b = self._f.matvec_Ax(x.T)
+        Ax_b -= self._f.b.T
         ATAx_b = self._f.matvec_ATx(Ax_b)
 
         mu = min(1, self._h.regcoef / abs(ATAx_b).max()) * Ax_b
-        res = 1 / 2 * Ax_b.dot(Ax_b.T) + 1 / 2 * mu.dot(mu.T) + self._f.b.dot(mu.T)
+        res = 1 / 2 * Ax_b.T.dot(Ax_b)
+        res += 1 / 2 * mu.T.dot(mu)
+        res += self._f.b.dot(mu)
         if sparse.issparse(res):
             res = res[0, 0]
         return res + self._h.regcoef * abs(x).sum()
@@ -175,19 +182,22 @@ class LassoNonsmoothOracle(BaseNonsmoothConvexOracle):
         self.regcoef = regcoef
 
     def func(self, x):
-        Ax_b = self.matvec_Ax(x.T)- self.b
-        return 0.5 * Ax_b.dot(Ax_b.T) + self.regcoef*abs(x).sum()
+        Ax_b = self.matvec_Ax(x.T).T - self.b
+        return 0.5 * Ax_b.dot(Ax_b.T)[0, 0] + self.regcoef*abs(x).sum()
 
     def subgrad(self, x):
         sbg = self.regcoef*x.sign().T if sparse.issparse(x) else self.regcoef*np.sign(x)
-        return self.matvec_ATx(self.matvec_Ax(x.T) - self.b) + sbg
+        return self.matvec_ATx((self.matvec_Ax(x.T).T - self.b).T) + sbg
 
     def duality_gap(self, x):
-        Ax_b = self.matvec_Ax(x.T) - self.b
+        Ax_b = self.matvec_Ax(x.T)
+        Ax_b -= self.b.T
         ATAx_b = self.matvec_ATx(Ax_b)
 
         mu = min(1, self.regcoef / abs(ATAx_b).max()) * Ax_b
-        res = 1 / 2 * Ax_b.dot(Ax_b.T) + 1 / 2 * mu.dot(mu.T) + self.b.dot(mu.T)
+        res = 1 / 2 * Ax_b.T.dot(Ax_b)
+        res += 1 / 2 * mu.T.dot(mu)
+        res += self.b.dot(mu)
         if sparse.issparse(res):
             res = res[0, 0]
         return res + self.regcoef * abs(x).sum()
@@ -203,8 +213,9 @@ def lasso_duality_gap(x, Ax_b, ATAx_b, b, regcoef):
     
 
 def create_lasso_prox_oracle(A, b, regcoef):
+    AT = A.T
     matvec_Ax = lambda x: A.dot(x)
-    matvec_ATx = lambda x: A.T.dot(x)
+    matvec_ATx = lambda x: AT.dot(x)
     return LassoProxOracle(LeastSquaresOracle(matvec_Ax, matvec_ATx, b),
                            L1RegOracle(regcoef))
 

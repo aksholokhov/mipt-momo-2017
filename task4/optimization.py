@@ -2,6 +2,7 @@ from collections import defaultdict
 import numpy as np
 from scipy.sparse.linalg import norm
 from time import time
+from scipy import sparse
 import datetime
 
 
@@ -59,6 +60,8 @@ def subgradient_method(oracle, x_0, tolerance=1e-2, max_iter=1000, alpha_0=1,
     if display:
         print("Debug info")
 
+    x_opt = x_0
+    phi_opt = oracle.func(x_0)
     start = time()
     for k in range(max_iter+1):
         dg = oracle.duality_gap(x_k)
@@ -74,11 +77,20 @@ def subgradient_method(oracle, x_0, tolerance=1e-2, max_iter=1000, alpha_0=1,
         if dg <= tolerance:    # TODO: Check the correctness
             return x_k, 'success', history
 
-        sg_k = oracle.subgrad(x_k)
+        sg_k = oracle.subgrad(x_k).T
         a_k = alpha_0/np.sqrt(k+1)
-        x_k = x_k - a_k*sg_k/np.sqrt(sg_k.dot(sg_k.T))
+        div = np.sqrt(sg_k.dot(sg_k.T))
+        if sparse.issparse(div):
+            div = div[0, 0]
+        x_k = x_k - a_k*sg_k/div
+        phi_k = oracle.func(x_k)
 
-    return x_k, 'iterations_exceeded', history
+        if phi_k <= phi_opt:
+            phi_opt = phi_k
+            x_opt = x_k
+
+
+    return x_opt, 'iterations_exceeded', history
 
 
 
@@ -159,9 +171,13 @@ def proximal_gradient_descent(oracle, x_0, L_0=1, tolerance=1e-5,
         g_k = oracle.grad(x_k)
         f_k = oracle._f.func(x_k)
         while True:
-            y = oracle.prox(x_k - 1/L*g_k, 1/L)
+            y = oracle.prox(x_k - 1/L*g_k.T, 1/L)
             y_xk = y - x_k
-            if oracle._f.func(y) <= f_k + g_k.dot(y_xk.T) + L/2*y_xk.dot(y_xk.T):
+            rhs = y_xk.dot(g_k) + L/2*y_xk.dot(y_xk.T)
+            if sparse.issparse(rhs):
+                rhs = rhs[0, 0]
+            rhs += f_k
+            if oracle._f.func(y) <= rhs:
                 break
             L *= 2
         x_k = y
@@ -237,6 +253,7 @@ def accelerated_proximal_gradient_descent(oracle, x_0, L_0=1.0, tolerance=1e-5,
     v_k = x_0
     x_opt = x_0
     phi_opt = oracle.func(x_0)
+    phi_y = oracle.func(y_k)
     af = 0
     start = time()
     for k in range(max_iter):
@@ -246,7 +263,7 @@ def accelerated_proximal_gradient_descent(oracle, x_0, L_0=1.0, tolerance=1e-5,
         if trace:
             current_time = time()
             history['time'].append(current_time - start)
-            history['func'].append(oracle.func(y_k))
+            history['func'].append(phi_y)
             history['duality_gap'].append(dg)
 
         if dg < tolerance:
@@ -256,7 +273,7 @@ def accelerated_proximal_gradient_descent(oracle, x_0, L_0=1.0, tolerance=1e-5,
             a = (1+np.sqrt(1 + 4*L*A))/(2*L)
             tau = a/(a+A)
             z = tau*v_k + (1 - tau)*y_k
-            y = oracle.prox(z - 1/L*oracle.grad(z), 1/L)
+            y = oracle.prox(z - 1/L*oracle.grad(z).T, 1/L)
             f_y = oracle._f.func(y)
             f_z = oracle._f.func(z)
             g_z = oracle.grad(z)
@@ -269,23 +286,26 @@ def accelerated_proximal_gradient_descent(oracle, x_0, L_0=1.0, tolerance=1e-5,
                 x_opt = z
                 phi_opt = phi_z
             y_z = y - z
-            if f_y <= f_z + g_z.dot(y_z.T) + L/2*y_z.dot(y_z.T):
+            if sparse.issparse(y):
+                rhs = f_z + (g_z.T.dot(y_z.T) + L/2*y_z.dot(y_z.T))[0, 0]
+            else:
+                rhs = f_z + g_z.dot(y_z) + L/2*y_z.dot(y_z.T)
+            if f_y <= rhs:
                 break
             L *= 2
 
-        z_k = z
         y_k = y
         A += a
-        af += a*oracle.grad(z_k)
-        v_k = oracle.prox(x_0 - af, A)
+        af += a*g_z
+        v_k = oracle.prox(x_0.T - af, A)
         L = max(L_0, L/2)
 
-    dg = oracle.duality_gap(y)
+    dg = oracle.duality_gap(y_k)
 
     if trace:
         current_time = time()
         history['time'].append(current_time - start)
-        history['func'].append(oracle.func(y))
+        history['func'].append(oracle.func(y_k))
         history['duality_gap'].append(dg)
 
     return x_opt, "iterations_exceeded", history
