@@ -129,9 +129,9 @@ class L1RegOracle(BaseProxOracle):
 
     def prox(self, x, alpha):
         def soft_threshold(c, alpha):
-            if c >= alpha:
+            if c > alpha:
                 return c - alpha
-            elif c <= -alpha:
+            elif c < -alpha:
                 return c + alpha
             else:
                 return 0
@@ -140,13 +140,10 @@ class L1RegOracle(BaseProxOracle):
             p = np.squeeze(x.toarray())
         else:
             p = x
-        res = np.array([soft_threshold(e, alpha*self.regcoef) for e in p])
+        res = np.array([soft_threshold(e, self.regcoef*alpha) for e in p])
         if sparse.issparse(x):
             return sparse.csr_matrix(res)
         return res
-
-
-
 
 
 class LassoProxOracle(BaseCompositeOracle):

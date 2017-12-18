@@ -142,16 +142,6 @@ def proximal_gradient_descent(oracle, x_0, L_0=1, tolerance=1e-5,
     start = time()
     L = L_0
     for k in range(max_iter+1):
-        g_k = oracle.grad(x_k)
-        f_k = oracle.func(x_k)
-        while True:
-            y = oracle.prox(x_k - 1/L*g_k, 1/L)
-            y_xk = y - x_k
-            if oracle._f.func(y) <= f_k + g_k.dot(y_xk.T) + L/2*y_xk.dot(y_xk.T):
-                break
-            L /= 2
-        x_k = y
-        L = max(L_0, L/2)
 
         dg = oracle.duality_gap(x_k)
 
@@ -165,6 +155,18 @@ def proximal_gradient_descent(oracle, x_0, L_0=1, tolerance=1e-5,
 
         if dg <= tolerance:    # TODO: Check the correctness
             return x_k, 'success', history
+
+        g_k = oracle.grad(x_k)
+        f_k = oracle.func(x_k)
+        while True:
+            y = oracle.prox(x_k - 1/L*g_k, 1/L)
+            y_xk = y - x_k
+            if oracle._f.func(y) <= f_k + g_k.dot(y_xk.T) + L/2*y_xk.dot(y_xk.T):
+                break
+            L *= 2
+        x_k = y
+        L = max(L_0, L/2)
+
 
     return x_k, 'iterations_exceeded', history
 
@@ -248,7 +250,8 @@ def accelerated_proximal_gradient_descent(oracle, x_0, L_0=1.0, tolerance=1e-5,
             if phi_z < phi_opt:
                 x_opt = z
                 phi_opt = phi_z
-            if f_y <= f_z + g_z.dot((y - z).T) + L/2*norm(y-z)**2:
+            y_z = y - z
+            if f_y <= f_z + g_z.dot((y - z).T) + L/2*y_z.dot(y_z.T)**2:
                 break
             L /= 2
 
