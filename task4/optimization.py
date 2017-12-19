@@ -62,6 +62,7 @@ def subgradient_method(oracle, x_0, tolerance=1e-2, max_iter=1000, alpha_0=1,
 
     x_opt = x_0
     phi_opt = oracle.func(x_0)
+    phi_k = phi_opt
     start = time()
     for k in range(max_iter+1):
         dg = oracle.duality_gap(x_k)
@@ -69,7 +70,7 @@ def subgradient_method(oracle, x_0, tolerance=1e-2, max_iter=1000, alpha_0=1,
         if trace:
             current_time = time()
             history['time'].append(current_time - start)
-            history['func'].append(oracle.func(x_k))
+            history['func'].append(phi_k)
             history['duality_gap'].append(dg)
             if max(x_0.shape) <= 2:
                 history['x'].append(np.copy(x_k))
@@ -88,7 +89,6 @@ def subgradient_method(oracle, x_0, tolerance=1e-2, max_iter=1000, alpha_0=1,
         if phi_k <= phi_opt:
             phi_opt = phi_k
             x_opt = x_k
-
 
     return x_opt, 'iterations_exceeded', history
 
@@ -156,11 +156,14 @@ def proximal_gradient_descent(oracle, x_0, L_0=1, tolerance=1e-5,
     for k in range(max_iter):
 
         dg = oracle.duality_gap(x_k)
+        g_k = oracle.grad(x_k)
+        f_k = oracle._f.func(x_k)
+        phi_k = f_k + oracle._h.func(x_k)
 
         if trace:
             current_time = time()
             history['time'].append(current_time - start)
-            history['func'].append(oracle.func(x_k))
+            history['func'].append(phi_k)
             history['duality_gap'].append(dg)
             if max(x_0.shape) <= 2:
                 history['x'].append(np.copy(x_k))
@@ -168,8 +171,7 @@ def proximal_gradient_descent(oracle, x_0, L_0=1, tolerance=1e-5,
         if dg <= tolerance:    # TODO: Check the correctness
             return x_k, 'success', history
 
-        g_k = oracle.grad(x_k)
-        f_k = oracle._f.func(x_k)
+
         while True:
             y = oracle.prox(x_k - 1/L*g_k.T, 1/L)
             y_xk = y - x_k
@@ -273,10 +275,10 @@ def accelerated_proximal_gradient_descent(oracle, x_0, L_0=1.0, tolerance=1e-5,
             a = (1+np.sqrt(1 + 4*L*A))/(2*L)
             tau = a/(a+A)
             z = tau*v_k + (1 - tau)*y_k
-            y = oracle.prox(z - 1/L*oracle.grad(z).T, 1/L)
+            g_z = oracle.grad(z)
+            y = oracle.prox(z - 1/L*g_z.T, 1/L)
             f_y = oracle._f.func(y)
             f_z = oracle._f.func(z)
-            g_z = oracle.grad(z)
             phi_y = f_y + oracle._h.func(y)
             phi_z = f_z + oracle._h.func(z)
             if phi_y < phi_opt:

@@ -183,7 +183,10 @@ class LassoNonsmoothOracle(BaseNonsmoothConvexOracle):
 
     def func(self, x):
         Ax_b = self.matvec_Ax(x.T).T - self.b
-        return 0.5 * Ax_b.dot(Ax_b.T)[0, 0] + self.regcoef*abs(x).sum()
+        res = 0.5 * Ax_b.dot(Ax_b.T)
+        if sparse.issparse(res):
+            res = res[0, 0]
+        return res + self.regcoef*abs(x).sum()
 
     def subgrad(self, x):
         sbg = self.regcoef*x.sign().T if sparse.issparse(x) else self.regcoef*np.sign(x)
@@ -221,7 +224,8 @@ def create_lasso_prox_oracle(A, b, regcoef):
 
 
 def create_lasso_nonsmooth_oracle(A, b, regcoef):
+    AT = A.T
     matvec_Ax = lambda x: A.dot(x)
-    matvec_ATx = lambda x: A.T.dot(x)
+    matvec_ATx = lambda x: AT.dot(x)
     return LassoNonsmoothOracle(matvec_Ax, matvec_ATx, b, regcoef)
 
