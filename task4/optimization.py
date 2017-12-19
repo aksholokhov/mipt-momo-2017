@@ -142,7 +142,7 @@ def proximal_gradient_descent(oracle, x_0, L_0=1, tolerance=1e-5,
     x_k = x_0
 
     if trace:
-        history = {'time': [], 'func' : [], 'duality_gap' : []}
+        history = {'time': [], 'func' : [], 'duality_gap' : [], 'inner_iters': []}
         if max(x_0.shape) <= 2:
             history['x'] = []
     else:
@@ -153,6 +153,7 @@ def proximal_gradient_descent(oracle, x_0, L_0=1, tolerance=1e-5,
 
     start = time()
     L = L_0
+    inner_iter_counter = 0
     for k in range(max_iter):
 
         dg = oracle.duality_gap(x_k)
@@ -165,6 +166,7 @@ def proximal_gradient_descent(oracle, x_0, L_0=1, tolerance=1e-5,
             history['time'].append(current_time - start)
             history['func'].append(phi_k)
             history['duality_gap'].append(dg)
+            history['inner_iters'].append(inner_iter_counter)
             if max(x_0.shape) <= 2:
                 history['x'].append(np.copy(x_k))
 
@@ -173,6 +175,7 @@ def proximal_gradient_descent(oracle, x_0, L_0=1, tolerance=1e-5,
 
 
         while True:
+            inner_iter_counter += 1
             y = oracle.prox(x_k - 1/L*g_k.T, 1/L)
             y_xk = y - x_k
             rhs = y_xk.dot(g_k) + L/2*y_xk.dot(y_xk.T)
@@ -186,11 +189,13 @@ def proximal_gradient_descent(oracle, x_0, L_0=1, tolerance=1e-5,
         L = max(L_0, L/2)
 
     dg = oracle.duality_gap(x_k)
+
     if trace:
         current_time = time()
         history['time'].append(current_time - start)
         history['func'].append(oracle.func(x_k))
         history['duality_gap'].append(dg)
+        history['inner_iters'].append(inner_iter_counter)
         if max(x_0.shape) <= 2:
             history['x'].append(np.copy(x_k))
 
@@ -242,7 +247,7 @@ def accelerated_proximal_gradient_descent(oracle, x_0, L_0=1.0, tolerance=1e-5,
     """
 
     if trace:
-        history = {'time': [], 'func' : [], 'duality_gap' : []}
+        history = {'time': [], 'func' : [], 'duality_gap' : [], 'inner_iters': []}
     else:
         history = None
 
@@ -258,6 +263,7 @@ def accelerated_proximal_gradient_descent(oracle, x_0, L_0=1.0, tolerance=1e-5,
     phi_y = oracle.func(y_k)
     af = 0
     start = time()
+    inner_iters_counter = 0
     for k in range(max_iter):
 
         dg = oracle.duality_gap(y_k)
@@ -266,12 +272,14 @@ def accelerated_proximal_gradient_descent(oracle, x_0, L_0=1.0, tolerance=1e-5,
             current_time = time()
             history['time'].append(current_time - start)
             history['func'].append(phi_y)
+            history['inner_iters'].append(inner_iters_counter)
             history['duality_gap'].append(dg)
 
         if dg < tolerance:
             return x_opt, "success", history
 
         while True:
+            inner_iters_counter += 1
             a = (1+np.sqrt(1 + 4*L*A))/(2*L)
             tau = a/(a+A)
             z = tau*v_k + (1 - tau)*y_k
@@ -308,6 +316,7 @@ def accelerated_proximal_gradient_descent(oracle, x_0, L_0=1.0, tolerance=1e-5,
         current_time = time()
         history['time'].append(current_time - start)
         history['func'].append(oracle.func(y_k))
+        history['inner_iters'].append(inner_iters_counter)
         history['duality_gap'].append(dg)
 
     return x_opt, "iterations_exceeded", history

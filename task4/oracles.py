@@ -189,6 +189,10 @@ class LassoNonsmoothOracle(BaseNonsmoothConvexOracle):
         return res + self.regcoef*abs(x).sum()
 
     def subgrad(self, x):
+        # sbg = np.array([e if e != 0 else 1 for e in self.regcoef * np.sign(np.squeeze(x.toarray()))])
+        # if sparse.issparse(x):
+        #     sbg = sparse.csr_matrix(sbg)
+
         sbg = self.regcoef*x.sign().T if sparse.issparse(x) else self.regcoef*np.sign(x)
         return self.matvec_ATx((self.matvec_Ax(x.T).T - self.b).T) + sbg
 
